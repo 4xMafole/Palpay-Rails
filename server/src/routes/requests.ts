@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { env } from "../config/env.js";
 import { requireBearerToken } from "../middleware/auth.js";
+import { rateLimit } from "../middleware/rateLimit.js";
 import { evaluateRequest } from "../policy/engine.js";
 import { PurchaseRequestInputSchema } from "../policy/types.js";
 import { getMissionById } from "../db/missions.js";
@@ -23,7 +24,8 @@ const requireManager = requireBearerToken(env.MANAGER_API_KEY);
 // Agent-facing: the only endpoint that accepts purchase intents. The policy engine
 // decision below is deterministic. ALLOWED requests pay immediately with zero human
 // clicks; NEEDS_APPROVAL requests only pay after an explicit manager approval (Phase 5).
-requestsRouter.post("/", requireAgent, async (req, res) => {
+// Rate-limited: every call now also triggers a Gemini explanation (and possibly PayPal).
+requestsRouter.post("/", requireAgent, rateLimit({ windowMs: 60_000, max: 30 }), async (req, res) => {
     const parsed = PurchaseRequestInputSchema.safeParse(req.body);
     if (!parsed.success) {
         res.status(400).json({ error: "invalid_request", details: parsed.error.flatten().fieldErrors });

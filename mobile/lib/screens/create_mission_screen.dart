@@ -19,6 +19,7 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
   final _settings = SettingsStore();
   late final _api = ApiClient(_settings);
 
+  String _savingMessage = '';
   final _instructionController = TextEditingController();
   _Step _step = _Step.instruction;
   String? _error;
@@ -52,6 +53,8 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
     }
     setState(() {
       _step = _Step.saving;
+      _savingMessage =
+          'Gemini is drafting your policy\u2026 this can take up to a minute.';
       _error = null;
     });
     try {
@@ -103,6 +106,7 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
 
     setState(() {
       _step = _Step.saving;
+      _savingMessage = 'Activating mission\u2026';
       _error = null;
     });
     try {
@@ -151,7 +155,10 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
           child: switch (_step) {
             _Step.instruction => _buildInstructionStep(),
             _Step.review => _buildReviewStep(),
-            _Step.saving => const _CenteredSpinner(key: ValueKey('saving')),
+            _Step.saving => _CenteredSpinner(
+              key: const ValueKey('saving'),
+              message: _savingMessage,
+            ),
             _Step.done => const _SuccessStamp(key: ValueKey('done')),
           },
         ),
@@ -431,11 +438,28 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
 }
 
 class _CenteredSpinner extends StatelessWidget {
-  const _CenteredSpinner({super.key});
+  const _CenteredSpinner({super.key, this.message = ''});
+  final String message;
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: CircularProgressIndicator(color: AppColors.accent),
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(color: AppColors.accent),
+          if (message.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.textSecondary),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

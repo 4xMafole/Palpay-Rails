@@ -67,7 +67,7 @@ const MISSION_DRAFT_JSON_SCHEMA = {
  */
 export async function draftMissionFromInstruction(instruction: string): Promise<MissionDraft> {
     const interaction = await ai.interactions.create({
-        model: "gemini-3.8-flash",
+        model: env.GEMINI_MODEL,
         input: `${SYSTEM_PROMPT}\n\nCurrent date/time (UTC): ${new Date().toISOString()}\n\nManager instruction: """${instruction}"""`,
         response_format: MISSION_DRAFT_JSON_SCHEMA,
         response_mime_type: "application/json",
@@ -124,7 +124,7 @@ Mission: "${params.missionTitle}" — ${params.missionPurpose}
 Request: ${params.vendor}, "${params.itemDescription}", ${params.currency} ${params.amount.toFixed(2)}, ${params.isRecurring ? "recurring" : "one-time"}`;
 
     const interaction = await ai.interactions.create({
-        model: "gemini-3.8-flash",
+        model: env.GEMINI_MODEL,
         input,
     });
 

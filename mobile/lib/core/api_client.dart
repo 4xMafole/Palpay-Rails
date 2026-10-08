@@ -18,6 +18,26 @@ class ApiClient {
 
   final SettingsStore _settings;
 
+  // Without this, an unreachable/wrong server URL just spins forever instead
+  // of failing with a message the user can act on.
+  static const _defaultTimeout = Duration(seconds: 20);
+  // The draft endpoint calls Gemini and may hit a cold Render instance —
+  // both can push well past a normal request's latency.
+  static const _llmTimeout = Duration(seconds: 75);
+
+  Future<http.Response> _withTimeout(
+    Future<http.Response> request, {
+    Duration timeout = _defaultTimeout,
+  }) {
+    return request.timeout(
+      timeout,
+      onTimeout: () => throw ApiException(
+        'Could not reach the server at the configured URL. '
+        'Check it in Settings (tap the logout icon to reconnect).',
+      ),
+    );
+  }
+
   Future<Map<String, String>> _headers() async {
     final key = await _settings.getManagerKey();
     return {
@@ -52,10 +72,13 @@ class ApiClient {
   Future<({MissionDraft draft, String rawInstruction})> draftMission(
     String instruction,
   ) async {
-    final response = await http.post(
-      await _uri('/missions/draft'),
-      headers: await _headers(),
-      body: jsonEncode({'instruction': instruction}),
+    final response = await _withTimeout(
+      http.post(
+        await _uri('/missions/draft'),
+        headers: await _headers(),
+        body: jsonEncode({'instruction': instruction}),
+      ),
+      timeout: _llmTimeout,
     );
     final body = _decodeOrThrow(response);
     return (
@@ -68,21 +91,22 @@ class ApiClient {
     required MissionDraft draft,
     required String rawInstruction,
   }) async {
-    final response = await http.post(
-      await _uri('/missions'),
-      headers: await _headers(),
-      body: jsonEncode({
-        'draft': draft.toJson(),
-        'rawInstruction': rawInstruction,
-      }),
+    final response = await _withTimeout(
+      http.post(
+        await _uri('/missions'),
+        headers: await _headers(),
+        body: jsonEncode({
+          'draft': draft.toJson(),
+          'rawInstruction': rawInstruction,
+        }),
+      ),
     );
     return Mission.fromJson(_decodeOrThrow(response));
   }
 
   Future<List<Mission>> listMissions() async {
-    final response = await http.get(
-      await _uri('/missions'),
-      headers: await _headers(),
+    final response = await _withTimeout(
+      http.get(await _uri('/missions'), headers: await _headers()),
     );
     if (response.statusCode != 200) {
       throw ApiException('Failed to load missions (${response.statusCode})');
@@ -94,9 +118,8 @@ class ApiClient {
   }
 
   Future<List<PurchaseRequest>> listRequests() async {
-    final response = await http.get(
-      await _uri('/requests'),
-      headers: await _headers(),
+    final response = await _withTimeout(
+      http.get(await _uri('/requests'), headers: await _headers()),
     );
     if (response.statusCode != 200) {
       throw ApiException(
@@ -110,26 +133,26 @@ class ApiClient {
   }
 
   Future<PurchaseRequest> approveRequest(String id) async {
-    final response = await http.post(
-      await _uri('/requests/$id/approve'),
-      headers: await _headers(),
+    final response = await _withTimeout(
+      http.post(await _uri('/requests/$id/approve'), headers: await _headers()),
     );
     return PurchaseRequest.fromJson(_decodeOrThrow(response));
   }
 
   Future<PurchaseRequest> rejectRequest(String id) async {
-    final response = await http.post(
-      await _uri('/requests/$id/reject'),
-      headers: await _headers(),
+    final response = await _withTimeout(
+      http.post(await _uri('/requests/$id/reject'), headers: await _headers()),
     );
     return PurchaseRequest.fromJson(_decodeOrThrow(response));
   }
 
   Future<void> registerDeviceToken(String fcmToken) async {
-    await http.post(
-      await _uri('/device-tokens'),
-      headers: await _headers(),
-      body: jsonEncode({'fcmToken': fcmToken}),
+    await _withTimeout(
+      http.post(
+        await _uri('/device-tokens'),
+        headers: await _headers(),
+        body: jsonEncode({'fcmToken': fcmToken}),
+      ),
     );
   }
 }

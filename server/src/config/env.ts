@@ -20,6 +20,9 @@ const envSchema = z.object({
     PAYPAL_SANDBOX_CARD_NAME: z.string().min(1).default("Palpay Rail Sandbox Buyer"),
 
     GEMINI_API_KEY: z.string().min(1),
+    // Override if the default model hits its free-tier daily quota — any valid
+    // model id from https://ai.google.dev/gemini-api/docs/models works here.
+    GEMINI_MODEL: z.string().min(1).default("gemini-flash-lite-latest"),
 
     FIREBASE_PROJECT_ID: z.string().min(1),
     FIREBASE_CLIENT_EMAIL: z.string().min(1),

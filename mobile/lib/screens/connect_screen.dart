@@ -14,7 +14,9 @@ class ConnectScreen extends StatefulWidget {
 
 class _ConnectScreenState extends State<ConnectScreen>
     with SingleTickerProviderStateMixin {
-  final _urlController = TextEditingController(text: 'http://10.0.2.2:4000');
+  final _urlController = TextEditingController(
+    text: 'https://palpay-rail-api.onrender.com',
+  );
   final _keyController = TextEditingController();
   final _settings = SettingsStore();
   bool _saving = false;

@@ -15,6 +15,7 @@ export default defineConfig({
             PAYPAL_SANDBOX_CARD_CVV: "123",
             PAYPAL_SANDBOX_CARD_NAME: "Test Buyer",
             GEMINI_API_KEY: "test-gemini-key",
+            GEMINI_MODEL: "gemini-flash-lite-latest",
             FIREBASE_PROJECT_ID: "test-project",
             FIREBASE_CLIENT_EMAIL: "test@example.com",
             FIREBASE_PRIVATE_KEY: "test-private-key",

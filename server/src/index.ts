@@ -7,6 +7,10 @@ import { deviceTokensRouter } from "./routes/deviceTokens.js";
 
 const app = express();
 
+// Render (and most PaaS) sit behind a reverse proxy — without this, req.ip
+// always resolves to the proxy's address, making per-IP rate limiting useless.
+app.set("trust proxy", 1);
+
 app.use(cors());
 app.use(express.json());
 

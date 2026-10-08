@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Env/secrets
+.env
+.env.local
+.env.*.local
+!*.env.example
+
+# Logs
+npm-debug.log*
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/build/
+mobile/android/local.properties
+mobile/android/.gradle/
+mobile/ios/Flutter/.last_build_id
+mobile/**/*.g.dart
+mobile/android/app/google-services.json
+
+# Supabase local
+supabase/.branches
+supabase/.temp

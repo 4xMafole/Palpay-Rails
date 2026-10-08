@@ -1,0 +1,17 @@
+{
+    "name": "palpay-rail",
+    "private": true,
+    "version": "0.1.0",
+    "description": "Palpay Rail - purpose-bound permission layer for AI agent payments (PayPal AI Hackathon submission)",
+    "workspaces": [
+        "server",
+        "agent"
+    ],
+    "scripts": {
+        "dev:server": "npm run dev --workspace=server",
+        "build:server": "npm run build --workspace=server",
+        "test:server": "npm run test --workspace=server",
+        "demo:agent": "npm run start --workspace=agent"
+    },
+    "license": "MIT"
+}

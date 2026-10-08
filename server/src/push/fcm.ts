@@ -3,8 +3,19 @@ import { getMessaging } from "firebase-admin/messaging";
 import { env } from "../config/env.js";
 import { listDeviceTokens } from "../db/deviceTokens.js";
 
-// Env vars commonly store the private key with literal "\n" sequences; convert to real newlines.
-const privateKey = env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n");
+// Local .env stores the PEM with literal "\n" sequences (needs unescaping). Some
+// PaaS dashboards (e.g. Render) mangle pasted multi-line secrets, so as a more robust
+// alternative FIREBASE_PRIVATE_KEY may instead hold the whole PEM base64-encoded —
+// detected by it not starting with the PEM header after trimming.
+function resolvePrivateKey(raw: string): string {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("-----BEGIN")) {
+        return trimmed.replace(/\\n/g, "\n");
+    }
+    return Buffer.from(trimmed, "base64").toString("utf8");
+}
+
+const privateKey = resolvePrivateKey(env.FIREBASE_PRIVATE_KEY);
 
 const app =
     getApps()[0] ??
@@ -17,6 +28,7 @@ const app =
     });
 
 const messaging = getMessaging(app);
+
 
 /** Pushes a NEEDS_APPROVAL alert to every registered manager device. Best-effort: a failed send is logged, not thrown. */
 export async function sendApprovalPush(params: {

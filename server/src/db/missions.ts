@@ -8,6 +8,7 @@ interface MissionRow {
     purpose: string;
     vendor_allowlist: string[];
     max_amount: number;
+    total_budget: number;
     currency: string;
     allow_recurring: boolean;
     approval_triggers: string[];
@@ -25,6 +26,7 @@ function toMissionRecord(row: MissionRow): MissionRecord {
         purpose: row.purpose,
         vendorAllowlist: row.vendor_allowlist,
         maxAmount: Number(row.max_amount),
+        totalBudget: Number(row.total_budget),
         currency: row.currency,
         allowRecurring: row.allow_recurring,
         approvalTriggers: row.approval_triggers as MissionRecord["approvalTriggers"],
@@ -44,6 +46,7 @@ export async function createMission(draft: MissionDraft, rawInstruction: string)
             purpose: draft.purpose,
             vendor_allowlist: draft.vendorAllowlist,
             max_amount: draft.maxAmount,
+            total_budget: draft.totalBudget,
             currency: draft.currency,
             allow_recurring: draft.allowRecurring,
             approval_triggers: draft.approvalTriggers,

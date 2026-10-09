@@ -24,6 +24,8 @@ export interface CreateOrderParams {
     description: string;
     /** Our internal request id — doubles as the PayPal idempotency key so retries never double-pay. */
     requestId: string;
+    /** Approved vendor name, resolved to a real payee account when a mapping is configured. */
+    vendor?: string;
 }
 
 interface PayPalTokenResponse {
@@ -39,6 +41,27 @@ interface PayPalOrderResponse {
 interface CachedToken {
     accessToken: string;
     expiresAt: number;
+}
+
+// Maps an approved vendor name to the sandbox merchant that receives the money, so
+// the allowlist governs the actual payee and not just a label on the request.
+// Vendors with no mapping fall back to the app's own merchant account (see README).
+function parseVendorPayees(raw: string): Record<string, string> {
+    if (!raw.trim()) {
+        return {};
+    }
+    try {
+        const parsed = JSON.parse(raw) as Record<string, string>;
+        return Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k.trim().toLowerCase(), v]));
+    } catch {
+        throw new Error("PAYPAL_VENDOR_PAYEES must be valid JSON, e.g. {\"Acme Transcribe\":\"seller@example.com\"}");
+    }
+}
+
+const VENDOR_PAYEES = parseVendorPayees(env.PAYPAL_VENDOR_PAYEES);
+
+export function resolvePayeeEmail(vendor: string | undefined): string | undefined {
+    return vendor ? VENDOR_PAYEES[vendor.trim().toLowerCase()] : undefined;
 }
 
 /**
@@ -92,6 +115,7 @@ export class PayPalClient {
 
     async createOrder(params: CreateOrderParams): Promise<OrderResult> {
         const token = await this.getAccessToken();
+        const payeeEmail = resolvePayeeEmail(params.vendor);
         const response = await fetch(`${BASE_URL}/v2/checkout/orders`, {
             method: "POST",
             headers: {
@@ -105,6 +129,7 @@ export class PayPalClient {
                     {
                         amount: { currency_code: params.currency, value: params.amount.toFixed(2) },
                         description: params.description.slice(0, 127),
+                        ...(payeeEmail ? { payee: { email_address: payeeEmail } } : {}),
                     },
                 ],
                 // Guest/card payment_source: captures immediately, no buyer redirect needed.

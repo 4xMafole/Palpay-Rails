@@ -8,6 +8,7 @@ import '../core/models.dart';
 import '../core/push_service.dart';
 import '../core/settings_store.dart';
 import '../theme/app_theme.dart';
+import '../widgets/budget_bar.dart';
 import '../widgets/decision_badge.dart';
 import '../widgets/fade_slide_in.dart';
 import '../widgets/press_scale.dart';
@@ -204,12 +205,42 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final dateFormat = DateFormat('MMM d, h:mm a');
+    final activeMissions = _missionsById.values
+        .where((m) => m.status == 'active')
+        .toList();
+
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-      itemCount: _requests.length,
+      itemCount: _requests.length + (activeMissions.isEmpty ? 0 : 1),
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
-        final request = _requests[index];
+        if (activeMissions.isNotEmpty && index == 0) {
+          return FadeSlideIn(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Active mission budgets',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  for (final m in activeMissions) ...[
+                    BudgetBar(mission: m),
+                    if (m != activeMissions.last) const SizedBox(height: 18),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }
+
+        final request = _requests[activeMissions.isEmpty ? index : index - 1];
         final mission = _missionsById[request.missionId];
         return FadeSlideIn(
           index: index,

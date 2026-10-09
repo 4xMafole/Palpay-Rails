@@ -5,6 +5,7 @@ import { requireBearerToken } from "../middleware/auth.js";
 import { rateLimit } from "../middleware/rateLimit.js";
 import { draftMissionFromInstruction } from "../llm/gemini.js";
 import { createMission, getMissionById, listMissions, setMissionStatus } from "../db/missions.js";
+import { getMissionSpentToDate } from "../db/requests.js";
 import { MissionDraftSchema } from "../policy/types.js";
 
 export const missionsRouter = Router();
@@ -54,7 +55,14 @@ missionsRouter.post("/", requireManager, async (req, res) => {
 
 missionsRouter.get("/", requireManager, async (_req, res) => {
     try {
-        res.json(await listMissions());
+        const missions = await listMissions();
+        const withSpend = await Promise.all(
+            missions.map(async (mission) => {
+                const spentToDate = await getMissionSpentToDate(mission.id);
+                return { ...mission, spentToDate, budgetRemaining: mission.totalBudget - spentToDate };
+            }),
+        );
+        res.json(withSpend);
     } catch (err) {
         res.status(500).json({ error: "list_failed", message: (err as Error).message });
     }
@@ -67,7 +75,8 @@ missionsRouter.get("/:id", requireManager, async (req, res) => {
             res.status(404).json({ error: "not_found" });
             return;
         }
-        res.json(mission);
+        const spentToDate = await getMissionSpentToDate(mission.id);
+        res.json({ ...mission, spentToDate, budgetRemaining: mission.totalBudget - spentToDate });
     } catch (err) {
         res.status(500).json({ error: "fetch_failed", message: (err as Error).message });
     }

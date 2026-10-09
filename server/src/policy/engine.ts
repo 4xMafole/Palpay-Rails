@@ -1,17 +1,25 @@
-import type { EvaluationResult, MissionRecord, PurchaseRequestInput } from "./types.js";
+import type { EvaluationResult, MissionRecord, PurchaseRequestInput, SpendContext } from "./types.js";
 
 // A request within this fraction of the mission's max amount escalates to
 // NEEDS_APPROVAL instead of auto-allowing, when the mission opts into 'near_limit'.
 const NEAR_LIMIT_RATIO = 0.9;
 
+// Amounts are currency decimals; compare with a cent of tolerance so floating-point
+// drift can't wrongly block a request that exactly exhausts the budget.
+const CENT = 0.005;
+
 /**
  * Deterministic policy decision. No LLM involved: same mission + same request
  * always produces the same decision. Evaluates every rule (rather than
  * short-circuiting) so the audit feed can show the full matched/failed list.
+ *
+ * Called both when a request is submitted AND again immediately before any
+ * payment, so a mission cancelled/expired/exhausted in between still stops it.
  */
 export function evaluateRequest(
     mission: MissionRecord,
     request: PurchaseRequestInput,
+    context: SpendContext = { spentToDate: 0 },
     now: Date = new Date(),
 ): EvaluationResult {
     const matchedRules: string[] = [];
@@ -46,9 +54,20 @@ export function evaluateRequest(
         "currency_match",
         request.currency.toUpperCase() === mission.currency.toUpperCase(),
     );
-    const withinMaxAmount = record("within_max_amount", request.amount <= mission.maxAmount);
+    const withinMaxAmount = record("within_max_amount", request.amount <= mission.maxAmount + CENT);
+    const withinTotalBudget = record(
+        "within_mission_budget",
+        context.spentToDate + request.amount <= mission.totalBudget + CENT,
+    );
 
-    const hardBlocked = !isActive || !notExpired || !vendorAllowed || !recurringAllowed || !currencyMatches || !withinMaxAmount;
+    const hardBlocked =
+        !isActive ||
+        !notExpired ||
+        !vendorAllowed ||
+        !recurringAllowed ||
+        !currencyMatches ||
+        !withinMaxAmount ||
+        !withinTotalBudget;
     if (hardBlocked) {
         return { decision: "BLOCKED", matchedRules, failedRules };
     }

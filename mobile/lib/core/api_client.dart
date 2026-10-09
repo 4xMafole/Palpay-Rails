@@ -59,6 +59,19 @@ class ApiClient {
         ? <String, dynamic>{}
         : jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      // The server re-checks policy immediately before paying; a 409 means the
+      // mission changed (cancelled, expired, or budget used up) since this
+      // request was raised, so the approval was refused rather than paid.
+      if (response.statusCode == 409 &&
+          body['error'] == 'revalidation_failed') {
+        final failed = List<String>.from(
+          body['failedRules'] as List? ?? const [],
+        );
+        throw ApiException(
+          'Approval refused — the mission no longer permits this payment'
+          '${failed.isEmpty ? '' : ' (${failed.join(', ')})'}.',
+        );
+      }
       throw ApiException(
         (body['message'] ??
                 body['error'] ??

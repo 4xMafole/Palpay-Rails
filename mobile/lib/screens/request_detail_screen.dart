@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/models.dart';
+import '../core/rule_labels.dart';
 import '../core/settings_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/decision_badge.dart';
@@ -296,13 +297,16 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             size: 16,
           ),
           const SizedBox(width: 8),
-          Text(_humanizeRule(rule), style: const TextStyle(fontSize: 13)),
+          Expanded(
+            child: Text(
+              ruleLabel(rule, passed: passed),
+              style: const TextStyle(fontSize: 13),
+            ),
+          ),
         ],
       ),
     );
   }
-
-  String _humanizeRule(String rule) => rule.replaceAll('_', ' ');
 
   Widget _paypalCard(PurchaseRequest request) {
     final completed = request.paypalStatus == 'COMPLETED';

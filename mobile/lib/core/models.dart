@@ -20,6 +20,7 @@ class MissionDraft {
     required this.purpose,
     required this.vendorAllowlist,
     required this.maxAmount,
+    required this.totalBudget,
     required this.currency,
     required this.allowRecurring,
     required this.approvalTriggers,
@@ -27,11 +28,14 @@ class MissionDraft {
   });
 
   factory MissionDraft.fromJson(Map<String, dynamic> json) {
+    final maxAmount = (json['maxAmount'] as num).toDouble();
     return MissionDraft(
       title: json['title'] as String,
       purpose: json['purpose'] as String,
       vendorAllowlist: List<String>.from(json['vendorAllowlist'] as List),
-      maxAmount: (json['maxAmount'] as num).toDouble(),
+      maxAmount: maxAmount,
+      // Older drafts predate the cumulative cap; fall back to the per-payment cap.
+      totalBudget: (json['totalBudget'] as num?)?.toDouble() ?? maxAmount,
       currency: json['currency'] as String,
       allowRecurring: json['allowRecurring'] as bool,
       approvalTriggers: List<String>.from(json['approvalTriggers'] as List),
@@ -43,6 +47,7 @@ class MissionDraft {
   String purpose;
   List<String> vendorAllowlist;
   double maxAmount;
+  double totalBudget;
   String currency;
   bool allowRecurring;
   List<String> approvalTriggers;
@@ -53,6 +58,7 @@ class MissionDraft {
     'purpose': purpose,
     'vendorAllowlist': vendorAllowlist,
     'maxAmount': maxAmount,
+    'totalBudget': totalBudget,
     'currency': currency,
     'allowRecurring': allowRecurring,
     'approvalTriggers': approvalTriggers,
@@ -66,15 +72,21 @@ class Mission {
     required this.title,
     required this.status,
     required this.maxAmount,
+    required this.totalBudget,
+    required this.spentToDate,
     required this.currency,
   });
 
   factory Mission.fromJson(Map<String, dynamic> json) {
+    final maxAmount = (json['maxAmount'] as num).toDouble();
+    final totalBudget = (json['totalBudget'] as num?)?.toDouble() ?? maxAmount;
     return Mission(
       id: json['id'] as String,
       title: json['title'] as String,
       status: json['status'] as String,
-      maxAmount: (json['maxAmount'] as num).toDouble(),
+      maxAmount: maxAmount,
+      totalBudget: totalBudget,
+      spentToDate: (json['spentToDate'] as num?)?.toDouble() ?? 0,
       currency: json['currency'] as String,
     );
   }
@@ -83,7 +95,15 @@ class Mission {
   final String title;
   final String status;
   final double maxAmount;
+  final double totalBudget;
+  final double spentToDate;
   final String currency;
+
+  double get budgetRemaining =>
+      (totalBudget - spentToDate).clamp(0, totalBudget).toDouble();
+
+  double get budgetUsedFraction =>
+      totalBudget <= 0 ? 0 : (spentToDate / totalBudget).clamp(0, 1).toDouble();
 }
 
 class PurchaseRequest {

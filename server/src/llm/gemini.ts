@@ -27,11 +27,12 @@ function extractOutputText(interaction: InteractionWithSteps): string {
 
 const SYSTEM_PROMPT = `You convert a manager's natural-language spending instruction into a structured JSON policy for an AI agent payment permission system called Palpay Rail.
 
-Return a JSON object describing: title, purpose, vendorAllowlist, maxAmount, currency, allowRecurring, approvalTriggers, expiresAt.
+Return a JSON object describing: title, purpose, vendorAllowlist, maxAmount, totalBudget, currency, allowRecurring, approvalTriggers, expiresAt.
 - title: short human-readable name for this mission (max 120 chars)
 - purpose: one or two sentences describing what the payment is for
 - vendorAllowlist: array of specific vendor/service names the agent may pay (infer from the instruction; if none named, make a best-effort guess at a category description as a single-element array)
-- maxAmount: positive number, the maximum amount in major currency units (e.g. dollars, not cents)
+- maxAmount: positive number, the maximum for any SINGLE payment, in major currency units (e.g. dollars, not cents)
+- totalBudget: positive number, the maximum TOTAL that may be spent across the whole mission. Must be >= maxAmount. If the instruction describes one purchase (e.g. "a flight under $250"), set this equal to maxAmount. Only make it larger when the instruction clearly allows repeated spending (e.g. "up to $20 per tool, $200 total").
 - currency: 3-letter ISO currency code (default "USD" if not specified)
 - allowRecurring: boolean, true only if the instruction explicitly allows a subscription/recurring charge
 - approvalTriggers: array, may only contain the string "near_limit" (include it if the instruction implies the manager wants to review amounts close to the limit), otherwise an empty array
@@ -44,6 +45,7 @@ const MISSION_DRAFT_JSON_SCHEMA = {
         purpose: { type: "string" },
         vendorAllowlist: { type: "array", items: { type: "string" } },
         maxAmount: { type: "number" },
+        totalBudget: { type: "number" },
         currency: { type: "string" },
         allowRecurring: { type: "boolean" },
         approvalTriggers: { type: "array", items: { type: "string", enum: ["near_limit"] } },
@@ -54,6 +56,7 @@ const MISSION_DRAFT_JSON_SCHEMA = {
         "purpose",
         "vendorAllowlist",
         "maxAmount",
+        "totalBudget",
         "currency",
         "allowRecurring",
         "approvalTriggers",
@@ -105,6 +108,8 @@ export interface ExplainDecisionParams {
     amount: number;
     currency: string;
     isRecurring: boolean;
+    spentToDate?: number;
+    totalBudget?: number;
 }
 
 const EXPLAIN_SYSTEM_PROMPT = `You explain, in one or two plain-English sentences, why Palpay Rail's policy engine made a payment decision. You are explain-only: the decision below is already final and deterministic — you never change it, only describe it in friendly, specific terms a non-technical manager would understand. Reference the actual vendor/amount/mission and the specific matched or failed rule(s). Do not mention rule codenames verbatim (e.g. say "this mission doesn't allow subscriptions" not "recurring_allowed failed"). Keep it short. Return plain text only, no markdown, no JSON.`;
@@ -115,12 +120,17 @@ const EXPLAIN_SYSTEM_PROMPT = `You explain, in one or two plain-English sentence
  * display text and swallow errors.
  */
 export async function explainDecision(params: ExplainDecisionParams): Promise<string> {
+    const budgetLine =
+        params.totalBudget !== undefined && params.spentToDate !== undefined
+            ? `\nMission budget: ${params.currency} ${params.spentToDate.toFixed(2)} already spent of ${params.currency} ${params.totalBudget.toFixed(2)} total`
+            : "";
+
     const input = `${EXPLAIN_SYSTEM_PROMPT}
 
 Decision: ${params.decision}
 Matched rules: ${params.matchedRules.join(", ") || "none"}
 Failed rules: ${params.failedRules.join(", ") || "none"}
-Mission: "${params.missionTitle}" — ${params.missionPurpose}
+Mission: "${params.missionTitle}" — ${params.missionPurpose}${budgetLine}
 Request: ${params.vendor}, "${params.itemDescription}", ${params.currency} ${params.amount.toFixed(2)}, ${params.isRecurring ? "recurring" : "one-time"}`;
 
     const interaction = await ai.interactions.create({

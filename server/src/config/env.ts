@@ -19,6 +19,11 @@ const envSchema = z.object({
     PAYPAL_SANDBOX_CARD_CVV: z.string().min(3).max(4),
     PAYPAL_SANDBOX_CARD_NAME: z.string().min(1).default("Palpay Rail Sandbox Buyer"),
 
+    // Optional JSON map of approved vendor name -> sandbox merchant email, so the
+    // vendor allowlist routes real funds. Empty means all orders go to the app's
+    // own sandbox merchant account.
+    PAYPAL_VENDOR_PAYEES: z.string().default(""),
+
     GEMINI_API_KEY: z.string().min(1),
     // Override if the default model hits its free-tier daily quota — any valid
     // model id from https://ai.google.dev/gemini-api/docs/models works here.

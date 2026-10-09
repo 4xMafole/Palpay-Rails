@@ -28,6 +28,7 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
   final _titleController = TextEditingController();
   final _purposeController = TextEditingController();
   final _maxAmountController = TextEditingController();
+  final _totalBudgetController = TextEditingController();
   final _currencyController = TextEditingController();
   final _vendorInputController = TextEditingController();
   List<String> _vendors = [];
@@ -41,6 +42,7 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
     _titleController.dispose();
     _purposeController.dispose();
     _maxAmountController.dispose();
+    _totalBudgetController.dispose();
     _currencyController.dispose();
     _vendorInputController.dispose();
     super.dispose();
@@ -67,6 +69,7 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
         _titleController.text = draft.title;
         _purposeController.text = draft.purpose;
         _maxAmountController.text = draft.maxAmount.toStringAsFixed(2);
+        _totalBudgetController.text = draft.totalBudget.toStringAsFixed(2);
         _currencyController.text = draft.currency;
         _vendors = List.of(draft.vendorAllowlist);
         _allowRecurring = draft.allowRecurring;
@@ -89,7 +92,18 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
     }
     final maxAmount = double.tryParse(_maxAmountController.text.trim());
     if (maxAmount == null || maxAmount <= 0) {
-      setState(() => _error = 'Enter a valid maximum amount.');
+      setState(() => _error = 'Enter a valid maximum per-payment amount.');
+      return;
+    }
+    final totalBudget = double.tryParse(_totalBudgetController.text.trim());
+    if (totalBudget == null || totalBudget <= 0) {
+      setState(() => _error = 'Enter a valid total budget.');
+      return;
+    }
+    if (totalBudget < maxAmount) {
+      setState(
+        () => _error = 'Total budget must be at least the per-payment maximum.',
+      );
       return;
     }
 
@@ -98,6 +112,7 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
       purpose: _purposeController.text.trim(),
       vendorAllowlist: _vendors,
       maxAmount: maxAmount,
+      totalBudget: totalBudget,
       currency: _currencyController.text.trim().toUpperCase(),
       allowRecurring: _allowRecurring,
       approvalTriggers: _nearLimitApproval ? ['near_limit'] : [],
@@ -289,8 +304,16 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
             children: [
               Expanded(
                 child: _field(
-                  'Max amount',
+                  'Max per payment',
                   _maxAmountController,
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _field(
+                  'Total budget',
+                  _totalBudgetController,
                   keyboardType: TextInputType.number,
                 ),
               ),
@@ -300,6 +323,14 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
                 child: _field('Currency', _currencyController),
               ),
             ],
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text(
+              'Total budget caps everything this mission can ever spend, so an '
+              'agent cannot overspend in small, individually-allowed payments.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            ),
           ),
           const SizedBox(height: 8),
           _switchRow(

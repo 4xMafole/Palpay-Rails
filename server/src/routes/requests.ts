@@ -7,10 +7,12 @@ import { PurchaseRequestInputSchema } from "../policy/types.js";
 import { getMissionById } from "../db/missions.js";
 import {
     createRequest,
+    getMissionSpentToDate,
     getRequestById,
     listRequests,
     recordPaypalResult,
     setApprovalStatus,
+    updateRuleTrace,
 } from "../db/requests.js";
 import { paypalClient } from "../paypal/client.js";
 import { sendApprovalPush } from "../push/fcm.js";
@@ -39,7 +41,8 @@ requestsRouter.post("/", requireAgent, rateLimit({ windowMs: 60_000, max: 30 }),
             return;
         }
 
-        const evaluation = evaluateRequest(mission, parsed.data);
+        const spentToDate = await getMissionSpentToDate(mission.id);
+        const evaluation = evaluateRequest(mission, parsed.data, { spentToDate });
 
         // Explain-only, generated after the decision is already final; never allowed
         // to affect it. A failure here just means no explanation text, nothing more.
@@ -56,6 +59,8 @@ requestsRouter.post("/", requireAgent, rateLimit({ windowMs: 60_000, max: 30 }),
                 amount: parsed.data.amount,
                 currency: parsed.data.currency,
                 isRecurring: parsed.data.isRecurring,
+                spentToDate,
+                totalBudget: mission.totalBudget,
             });
         } catch {
             // Swallow — explanation is a display nicety, not part of the decision.
@@ -76,6 +81,7 @@ requestsRouter.post("/", requireAgent, rateLimit({ windowMs: 60_000, max: 30 }),
                     currency: parsed.data.currency,
                     description: parsed.data.itemDescription,
                     requestId: record.id,
+                    vendor: parsed.data.vendor,
                 });
                 record = await recordPaypalResult(record.id, {
                     paypalOrderId: result.orderId,
@@ -127,11 +133,54 @@ requestsRouter.get("/:id", requireManager, async (req, res) => {
     }
 });
 
-// Only pending NEEDS_APPROVAL requests can be approved/rejected (setApprovalStatus
-// guards this with a WHERE approval_status='pending', so double-taps are a no-op 404).
+// Approving re-runs the full policy check against CURRENT mission state before paying.
+// The decision made at submission time is not trusted here: the mission may have been
+// cancelled, expired, or had its budget consumed by other requests in the meantime.
 requestsRouter.post("/:id/approve", requireManager, async (req, res) => {
     try {
-        const updated = await setApprovalStatus(req.params.id, "approved");
+        const request = await getRequestById(req.params.id);
+        if (!request || request.approvalStatus !== "pending") {
+            res.status(404).json({ error: "not_found_or_already_decided" });
+            return;
+        }
+
+        const mission = await getMissionById(request.missionId);
+        if (!mission) {
+            res.status(404).json({ error: "mission_not_found" });
+            return;
+        }
+
+        const spentToDate = await getMissionSpentToDate(mission.id);
+        const recheck = evaluateRequest(
+            mission,
+            {
+                missionId: request.missionId,
+                vendor: request.vendor,
+                itemDescription: request.itemDescription,
+                amount: request.amount,
+                currency: request.currency,
+                isRecurring: request.isRecurring,
+            },
+            { spentToDate },
+        );
+
+        if (recheck.decision === "BLOCKED") {
+            const reason = `Approval refused: the mission no longer permits this payment (${recheck.failedRules.join(", ")}).`;
+            const rejected = await setApprovalStatus(request.id, "rejected", reason);
+            if (!rejected) {
+                res.status(404).json({ error: "not_found_or_already_decided" });
+                return;
+            }
+            await updateRuleTrace(request.id, recheck.matchedRules, recheck.failedRules);
+            res.status(409).json({
+                error: "revalidation_failed",
+                failedRules: recheck.failedRules,
+                request: { ...rejected, matchedRules: recheck.matchedRules, failedRules: recheck.failedRules },
+            });
+            return;
+        }
+
+        const updated = await setApprovalStatus(request.id, "approved");
         if (!updated) {
             res.status(404).json({ error: "not_found_or_already_decided" });
             return;
@@ -143,6 +192,7 @@ requestsRouter.post("/:id/approve", requireManager, async (req, res) => {
                 currency: updated.currency,
                 description: updated.itemDescription,
                 requestId: updated.id,
+                vendor: updated.vendor,
             });
             const final = await recordPaypalResult(updated.id, {
                 paypalOrderId: result.orderId,

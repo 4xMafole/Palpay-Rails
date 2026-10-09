@@ -10,23 +10,33 @@ export const MissionStatusSchema = z.enum(["draft", "active", "expired", "cancel
 export type MissionStatus = z.infer<typeof MissionStatusSchema>;
 
 // Structured policy fields a manager must review and confirm before a mission goes active.
-export const MissionDraftSchema = z.object({
-    title: z.string().trim().min(1).max(120),
-    purpose: z.string().trim().min(1).max(500),
-    vendorAllowlist: z.array(z.string().trim().min(1)).min(1),
-    maxAmount: z.number().positive(),
-    currency: z
-        .string()
-        .trim()
-        .length(3)
-        .transform((c) => c.toUpperCase()),
-    allowRecurring: z.boolean(),
-    approvalTriggers: z.array(z.enum(APPROVAL_TRIGGERS)).default([]),
-    expiresAt: z.string().datetime(),
-});
+export const MissionDraftSchema = z
+    .object({
+        title: z.string().trim().min(1).max(120),
+        purpose: z.string().trim().min(1).max(500),
+        vendorAllowlist: z.array(z.string().trim().min(1)).min(1),
+        maxAmount: z.number().positive(),
+        // Cumulative cap for the whole mission. Without this, maxAmount alone only
+        // limits a single payment and an agent can overspend in small chunks.
+        totalBudget: z.number().positive(),
+        currency: z
+            .string()
+            .trim()
+            .length(3)
+            .transform((c) => c.toUpperCase()),
+        allowRecurring: z.boolean(),
+        approvalTriggers: z.array(z.enum(APPROVAL_TRIGGERS)).default([]),
+        expiresAt: z.string().datetime(),
+    })
+    .refine((m) => m.totalBudget >= m.maxAmount, {
+        message: "totalBudget must be greater than or equal to maxAmount",
+        path: ["totalBudget"],
+    });
 export type MissionDraft = z.infer<typeof MissionDraftSchema>;
 
-export const MissionRecordSchema = MissionDraftSchema.extend({
+// .refine() returns a ZodEffects, which can't be .extend()ed — rebuild from the
+// same field definitions instead of duplicating them by hand.
+export const MissionRecordSchema = MissionDraftSchema.innerType().extend({
     id: z.string().uuid(),
     rawInstruction: z.string(),
     status: MissionStatusSchema,
@@ -55,4 +65,10 @@ export interface EvaluationResult {
     decision: Decision;
     matchedRules: string[];
     failedRules: string[];
+}
+
+/** Mission state that can change between a request being decided and actually paid. */
+export interface SpendContext {
+    /** Total already captured for this mission, in the mission's currency. */
+    spentToDate: number;
 }

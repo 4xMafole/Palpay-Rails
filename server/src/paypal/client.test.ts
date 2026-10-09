@@ -84,4 +84,24 @@ describe("PayPalClient", () => {
         ).rejects.toThrow(/PayPal create order failed/);
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
+
+    it("omits payee when no vendor mapping is configured, so funds go to the default merchant", async () => {
+        const fetchMock = mockFetchSequence([
+            { ok: true, body: { access_token: "token-123", expires_in: 3600 } },
+            { ok: true, body: { id: "ORDER-1", status: "CREATED" } },
+        ]);
+        vi.stubGlobal("fetch", fetchMock);
+
+        const client = new PayPalClient();
+        await client.createOrder({
+            amount: 10,
+            currency: "USD",
+            description: "a",
+            requestId: "req-1",
+            vendor: "Acme Transcribe",
+        });
+
+        const body = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+        expect(body.purchase_units[0]).not.toHaveProperty("payee");
+    });
 });

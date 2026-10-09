@@ -116,6 +116,23 @@ export interface PaypalResult {
     paypalStatus: string;
 }
 
+/**
+ * Total money actually captured for a mission. Only COMPLETED PayPal results
+ * count — pending approvals and failed executions must not consume budget.
+ */
+export async function getMissionSpentToDate(missionId: string): Promise<number> {
+    const { data, error } = await supabase
+        .from("requests")
+        .select("amount")
+        .eq("mission_id", missionId)
+        .eq("paypal_status", "COMPLETED");
+
+    if (error) {
+        throw new Error(`Failed to total spend for mission ${missionId}: ${error.message}`);
+    }
+    return (data as Array<{ amount: number }>).reduce((sum, row) => sum + Number(row.amount), 0);
+}
+
 /** Records the outcome of an actual PayPal sandbox call against an already-decided request. */
 export async function recordPaypalResult(id: string, result: PaypalResult): Promise<RequestRecord> {
     const { data, error } = await supabase
@@ -131,14 +148,27 @@ export async function recordPaypalResult(id: string, result: PaypalResult): Prom
     return toRequestRecord(data as RequestRow);
 }
 
-/** Marks approval-status transitions (approve/reject), wired up to PayPal capture in Phase 5. */
+/**
+ * Atomically claims a pending request. The `approval_status = 'pending'` filter is
+ * the concurrency guard: a second approve/reject for the same request matches no
+ * row and returns null, so a request can never be paid twice.
+ */
 export async function setApprovalStatus(
     id: string,
     approvalStatus: "approved" | "rejected",
+    explanation?: string,
 ): Promise<RequestRecord | null> {
+    const update: Record<string, unknown> = {
+        approval_status: approvalStatus,
+        decided_at: new Date().toISOString(),
+    };
+    if (explanation !== undefined) {
+        update.explanation = explanation;
+    }
+
     const { data, error } = await supabase
         .from("requests")
-        .update({ approval_status: approvalStatus, decided_at: new Date().toISOString() })
+        .update(update)
         .eq("id", id)
         .eq("approval_status", "pending")
         .select()
@@ -148,4 +178,20 @@ export async function setApprovalStatus(
         throw new Error(`Failed to update approval status for request ${id}: ${error.message}`);
     }
     return data ? toRequestRecord(data as RequestRow) : null;
+}
+
+/** Records the rules that were re-checked immediately before payment. */
+export async function updateRuleTrace(
+    id: string,
+    matchedRules: string[],
+    failedRules: string[],
+): Promise<void> {
+    const { error } = await supabase
+        .from("requests")
+        .update({ matched_rules: matchedRules, failed_rules: failedRules })
+        .eq("id", id);
+
+    if (error) {
+        throw new Error(`Failed to update rule trace for request ${id}: ${error.message}`);
+    }
 }

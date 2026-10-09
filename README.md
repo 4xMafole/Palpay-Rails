@@ -51,6 +51,29 @@ Two design decisions worth calling out:
   request is raised. If a mission is cancelled, expires, or has its budget
   consumed while a request sits pending, approving it is refused rather than paid.
 
+## Try it in one tap
+
+Two features let you (or a judge) exercise the whole system without configuring an
+agent first.
+
+**Rogue agent simulator** — the flask icon in the app's app bar, or
+`POST /demo/simulate`. Creates a fresh mission and runs five purchase attempts
+through the real policy engine, sized so each trips exactly one control:
+
+| Attempt | Outcome |
+|---|---|
+| Legitimate $19 one-time purchase | **Allowed** — real PayPal sandbox payment |
+| Same vendor, same $19, but a subscription | **Blocked** — `recurring_allowed` |
+| Cheaper $12 from an unapproved vendor | **Blocked** — `vendor_allowed` |
+| $25 at the per-payment cap, over total budget | **Blocked** — `within_mission_budget` |
+| Request with missing details | **Escalated** — fails closed |
+
+**Shadow mode** — the "Test these rules" panel when reviewing a mission, or
+`POST /missions/shadow`. Dry-runs a draft policy against representative purchases
+and reports what *would* happen, including how many repeat purchases the budget
+actually funds. Nothing is saved and no money moves, so a manager can sanity-check
+rules before activating them.
+
 ## Repo structure
 
 ```

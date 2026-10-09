@@ -15,8 +15,7 @@ import {
     updateRuleTrace,
 } from "../db/requests.js";
 import { paypalClient } from "../paypal/client.js";
-import { sendApprovalPush } from "../push/fcm.js";
-import { explainDecision } from "../llm/gemini.js";
+import { processPurchaseRequest } from "../services/purchaseRequests.js";
 
 export const requestsRouter = Router();
 
@@ -41,72 +40,8 @@ requestsRouter.post("/", requireAgent, rateLimit({ windowMs: 60_000, max: 30 }),
             return;
         }
 
-        const spentToDate = await getMissionSpentToDate(mission.id);
-        const evaluation = evaluateRequest(mission, parsed.data, { spentToDate });
-
-        // Explain-only, generated after the decision is already final; never allowed
-        // to affect it. A failure here just means no explanation text, nothing more.
-        let explanation: string | null = null;
-        try {
-            explanation = await explainDecision({
-                decision: evaluation.decision,
-                matchedRules: evaluation.matchedRules,
-                failedRules: evaluation.failedRules,
-                missionTitle: mission.title,
-                missionPurpose: mission.purpose,
-                vendor: parsed.data.vendor,
-                itemDescription: parsed.data.itemDescription,
-                amount: parsed.data.amount,
-                currency: parsed.data.currency,
-                isRecurring: parsed.data.isRecurring,
-                spentToDate,
-                totalBudget: mission.totalBudget,
-            });
-        } catch {
-            // Swallow — explanation is a display nicety, not part of the decision.
-        }
-
-        let record = await createRequest({
-            input: parsed.data,
-            decision: evaluation.decision,
-            matchedRules: evaluation.matchedRules,
-            failedRules: evaluation.failedRules,
-            explanation,
-        });
-
-        if (evaluation.decision === "ALLOWED") {
-            try {
-                const result = await paypalClient.createAndCaptureOrder({
-                    amount: parsed.data.amount,
-                    currency: parsed.data.currency,
-                    description: parsed.data.itemDescription,
-                    requestId: record.id,
-                    vendor: parsed.data.vendor,
-                });
-                record = await recordPaypalResult(record.id, {
-                    paypalOrderId: result.orderId,
-                    paypalStatus: result.status,
-                });
-            } catch (paypalErr) {
-                // The policy decision stands; only payment execution failed. Surface it
-                // distinctly so the audit feed doesn't read as "Allowed and paid".
-                record = await recordPaypalResult(record.id, { paypalOrderId: null, paypalStatus: "EXECUTION_FAILED" });
-                res.status(201).json({ ...record, paypalError: (paypalErr as Error).message });
-                return;
-            }
-        }
-
-        if (evaluation.decision === "NEEDS_APPROVAL") {
-            await sendApprovalPush({
-                requestId: record.id,
-                missionTitle: mission.title,
-                vendor: parsed.data.vendor,
-                amount: parsed.data.amount,
-                currency: parsed.data.currency,
-            });
-        }
-
-        res.status(201).json(record);
+        const { record, paypalError } = await processPurchaseRequest(mission, parsed.data);
+        res.status(201).json(paypalError ? { ...record, paypalError } : record);
     } catch (err) {
         res.status(500).json({ error: "request_failed", message: (err as Error).message });
     }

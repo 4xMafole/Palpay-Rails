@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { missionsRouter } from "./routes/missions.js";
 import { requestsRouter } from "./routes/requests.js";
 import { deviceTokensRouter } from "./routes/deviceTokens.js";
+import { demoRouter } from "./routes/demo.js";
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.get("/health", (_req, res) => {
 app.use("/missions", missionsRouter);
 app.use("/requests", requestsRouter);
 app.use("/device-tokens", deviceTokensRouter);
+app.use("/demo", demoRouter);
 
 // Added in a later phase: app.use("/audit", auditRouter);
 

@@ -7,6 +7,7 @@ import { draftMissionFromInstruction } from "../llm/gemini.js";
 import { createMission, getMissionById, listMissions, setMissionStatus } from "../db/missions.js";
 import { getMissionSpentToDate } from "../db/requests.js";
 import { MissionDraftSchema } from "../policy/types.js";
+import { runShadowTest } from "../policy/shadow.js";
 
 export const missionsRouter = Router();
 
@@ -35,6 +36,34 @@ missionsRouter.post("/draft", requireManager, rateLimit({ windowMs: 60_000, max:
 const CreateMissionSchema = z.object({
     draft: MissionDraftSchema,
     rawInstruction: z.string().trim().min(1).max(2000),
+});
+
+// Shadow mode: shows what a draft policy WOULD do, without saving it or moving money.
+// Pure policy-engine evaluation, so it is fast and has no side effects.
+missionsRouter.post("/shadow", requireManager, async (req, res) => {
+    const parsed = z.object({ draft: MissionDraftSchema }).safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: "invalid_request", details: parsed.error.flatten().fieldErrors });
+        return;
+    }
+
+    try {
+        const results = runShadowTest(parsed.data.draft);
+        const allowed = results.filter((r) => r.decision === "ALLOWED");
+        res.json({
+            results,
+            summary: {
+                total: results.length,
+                allowed: allowed.length,
+                needsApproval: results.filter((r) => r.decision === "NEEDS_APPROVAL").length,
+                blocked: results.filter((r) => r.decision === "BLOCKED").length,
+                wouldSpend: allowed.reduce((sum, r) => sum + r.input.amount, 0),
+                currency: parsed.data.draft.currency,
+            },
+        });
+    } catch (err) {
+        res.status(500).json({ error: "shadow_failed", message: (err as Error).message });
+    }
 });
 
 // The manager must have reviewed/edited the draft before calling this — it activates immediately.

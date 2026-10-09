@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/demo_models.dart';
 import '../core/models.dart';
+import '../core/rule_labels.dart';
 import '../core/settings_store.dart';
 import '../theme/app_theme.dart';
+import '../widgets/fade_slide_in.dart';
 import '../widgets/press_scale.dart';
 
 enum _Step { instruction, review, saving, done }
@@ -20,6 +23,8 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
   late final _api = ApiClient(_settings);
 
   String _savingMessage = '';
+  bool _shadowRunning = false;
+  ShadowReport? _shadowReport;
   final _instructionController = TextEditingController();
   _Step _step = _Step.instruction;
   String? _error;
@@ -137,6 +142,168 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
         _error = e.toString();
       });
     }
+  }
+
+  /// Builds the draft currently shown in the form, or null if it isn't valid yet.
+  MissionDraft? _currentDraft() {
+    final maxAmount = double.tryParse(_maxAmountController.text.trim());
+    final totalBudget = double.tryParse(_totalBudgetController.text.trim());
+    final currency = _currencyController.text.trim().toUpperCase();
+    if (_vendors.isEmpty ||
+        maxAmount == null ||
+        maxAmount <= 0 ||
+        totalBudget == null ||
+        totalBudget < maxAmount ||
+        currency.length != 3 ||
+        _titleController.text.trim().isEmpty ||
+        _purposeController.text.trim().isEmpty) {
+      return null;
+    }
+    return MissionDraft(
+      title: _titleController.text.trim(),
+      purpose: _purposeController.text.trim(),
+      vendorAllowlist: _vendors,
+      maxAmount: maxAmount,
+      totalBudget: totalBudget,
+      currency: currency,
+      allowRecurring: _allowRecurring,
+      approvalTriggers: _nearLimitApproval ? ['near_limit'] : [],
+      expiresAt: _expiresAt.toUtc().toIso8601String(),
+    );
+  }
+
+  Future<void> _runShadowTest() async {
+    final draft = _currentDraft();
+    if (draft == null) {
+      setState(
+        () => _error = 'Fill in the fields above before testing these rules.',
+      );
+      return;
+    }
+    setState(() {
+      _shadowRunning = true;
+      _error = null;
+    });
+    try {
+      final report = await _api.shadowTest(draft);
+      if (!mounted) return;
+      setState(() {
+        _shadowReport = report;
+        _shadowRunning = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _shadowRunning = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  Widget _shadowSection() {
+    final report = _shadowReport;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.visibility_rounded,
+                size: 18,
+                color: AppColors.accent,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Test these rules first',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              if (_shadowRunning)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.accent,
+                  ),
+                )
+              else
+                PressScale(
+                  onTap: _runShadowTest,
+                  child: TextButton(
+                    onPressed: _runShadowTest,
+                    child: Text(report == null ? 'Run' : 'Re-run'),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Dry run against sample purchases. Nothing is saved and no money moves.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+          if (report != null) ...[
+            const SizedBox(height: 14),
+            Text(
+              '${report.allowed} allowed · ${report.needsApproval} escalated · ${report.blocked} blocked',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'These rules would let through ${report.currency} '
+              '${report.wouldSpend.toStringAsFixed(2)} of the sample spend.',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (var i = 0; i < report.results.length; i++)
+              FadeSlideIn(index: i, child: _shadowRow(report.results[i])),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _shadowRow(ShadowProbeResult result) {
+    final (color, icon) = switch (result.decision) {
+      'ALLOWED' => (AppColors.allowed, Icons.check_circle_rounded),
+      'NEEDS_APPROVAL' => (AppColors.needsApproval, Icons.pan_tool_rounded),
+      _ => (AppColors.blocked, Icons.block_rounded),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 15),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(result.label, style: const TextStyle(fontSize: 12.5)),
+                if (result.failedRules.isNotEmpty)
+                  Text(
+                    ruleLabel(result.failedRules.first, passed: false),
+                    style: TextStyle(color: color, fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _addVendor() {
@@ -385,6 +552,8 @@ class _CreateMissionScreenState extends State<CreateMissionScreen> {
             ),
           ],
           const SizedBox(height: 22),
+          _shadowSection(),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: PressScale(

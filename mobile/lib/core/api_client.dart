@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'demo_models.dart';
 import 'models.dart';
 import 'settings_store.dart';
 
@@ -167,5 +168,27 @@ class ApiClient {
         body: jsonEncode({'fcmToken': fcmToken}),
       ),
     );
+  }
+
+  /// Shadow mode: evaluates a draft policy without saving it or moving money.
+  Future<ShadowReport> shadowTest(MissionDraft draft) async {
+    final response = await _withTimeout(
+      http.post(
+        await _uri('/missions/shadow'),
+        headers: await _headers(),
+        body: jsonEncode({'draft': draft.toJson()}),
+      ),
+    );
+    return ShadowReport.fromJson(_decodeOrThrow(response));
+  }
+
+  /// Runs the scripted rogue-agent attack. This creates a real mission and makes
+  /// a real PayPal sandbox payment for the step that is legitimately allowed.
+  Future<SimulationReport> runSimulation() async {
+    final response = await _withTimeout(
+      http.post(await _uri('/demo/simulate'), headers: await _headers()),
+      timeout: _llmTimeout,
+    );
+    return SimulationReport.fromJson(_decodeOrThrow(response));
   }
 }

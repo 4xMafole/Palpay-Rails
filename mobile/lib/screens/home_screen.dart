@@ -15,6 +15,7 @@ import '../widgets/press_scale.dart';
 import 'connect_screen.dart';
 import 'create_mission_screen.dart';
 import 'request_detail_screen.dart';
+import 'simulator_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -123,6 +124,30 @@ class _HomeScreenState extends State<HomeScreen> {
     if (changed == true) _load();
   }
 
+  Future<void> _openSimulator() async {
+    await Navigator.of(context).push(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 380),
+        pageBuilder: (_, _, _) => const SimulatorScreen(),
+        transitionsBuilder: (_, animation, _, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween(begin: 0.96, end: 1.0).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
+    // The simulation creates a mission and real requests, so refresh the feed.
+    _load();
+  }
+
   Future<void> _disconnect() async {
     await _settings.clear();
     if (!mounted) return;
@@ -138,6 +163,11 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Audit feed'),
         actions: [
+          IconButton(
+            tooltip: 'Rogue agent simulator',
+            onPressed: _openSimulator,
+            icon: const Icon(Icons.science_rounded, color: AppColors.accent),
+          ),
           IconButton(
             onPressed: _disconnect,
             icon: const Icon(
